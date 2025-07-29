@@ -1,0 +1,25 @@
+Sub RunFuzzyMatch()
+    ' This macro runs the fuzzy matching script by calling a shell script via AppleScript.
+    ' This is the final attempt to bypass system security restrictions.
+
+    Dim wbPath As String
+    wbPath = ThisWorkbook.FullName
+    
+    Dim scriptPath As String
+    scriptPath = ThisWorkbook.Path & "/run.sh"
+
+    ' The AppleScript to open Terminal and run our command.
+    ' "quoted form of" is used to safely handle spaces or special characters in file paths.
+    Dim appleScript As String
+    appleScript = "tell application ""Terminal"" to do script ""sh "" & quoted form of """ & scriptPath & """ & "" "" & quoted form of """ & wbPath & """"""
+
+    On Error Resume Next
+    MacScript appleScript
+    
+    ' Check if the MacScript command itself failed.
+    If Err.Number <> 0 Then
+        MsgBox "Failed to run the script. It seems your system's security is blocking even AppleScript execution from Excel. A clickable button inside Excel is not feasible on this system. The only remaining option is the external clickable script.", vbCritical, "Execution Failed"
+    Else
+        MsgBox "Match process started in a new Terminal window. Please keep an eye on that window for progress. The results will be saved to your workbook.", vbInformation, "Process Started"
+    End If
+End Sub

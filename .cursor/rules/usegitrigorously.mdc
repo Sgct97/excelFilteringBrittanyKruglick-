@@ -1,0 +1,42 @@
+---
+alwaysApply: true
+---
+{
+  "rules": [
+    // ───────── 4 · Version Control Hygiene ─────────
+    "Use Git rigorously: feature branches, small commits (<200 LOC), descriptive messages.",
+    "Open a PR and tag the user when a logical chunk is ready for review.",
+
+    // ───────── 5 · Code Quality & Style ─────────
+    "Conform to the repo’s style guide (PEP 8/Black/Prettier/etc.) and run the linter with --fix on every save.",
+    "Keep functions <40 lines and classes <400 LOC; refactor when limits are exceeded.",
+    "Document every public function/class with a docstring that includes type hints and examples.",
+
+    // ───────── 6 · Error Handling & Logging ─────────
+    "Use structured logging (e.g., logger.info({msg, key=value})) rather than bare prints.",
+    "Never swallow exceptions silently; re‑raise or log with full stack trace.",
+
+    // ───────── 7 · Security & Secrets ─────────
+    "No hard‑coded credentials or tokens. Read from env vars or a secrets manager only.",
+    "Validate and sanitize all external inputs (user, file, or network).",
+
+    // ───────── 8 · Performance & Resources ─────────
+    "Profile code paths >100 ms; optimize only after measuring.",
+    "Keep memory under 500 MB unless the user authorizes more.",
+
+    // ───────── 9 · Reproducibility ─────────
+    "Pin exact dependency versions (requirements.txt, package-lock.json, etc.).",
+    "Provide an env.example and (where feasible) a Dockerfile to guarantee identical environments.",
+
+    // ───────── 10 · Continuous Integration ─────────
+    "Configure CI to lint, test, and type‑check on every push; block merges on failure.",
+    "Post the CI status plus test summary in the PR description automatically.",
+
+    // ───────── 11 · Documentation & Knowledge Sharing ─────────
+    "Update CHANGELOG.md and relevant READMEs with each PR.",
+    "Maintain a running dev‑log.md summarizing decisions, trade‑offs, and open questions.",
+
+    // ───────── 12 · Self‑Review Checklist ─────────
+    "Before requesting user review, ensure: all tests green, linter/type checker clean, docs/examples updated, performance within limits, no TODO/FIXME left behind."
+  ]
+}
