@@ -10,4 +10,4 @@ source "$DIR/venv/bin/activate"
 
 # Run the python script, passing along the workbook path argument ($1)
 # The workbook path is provided by the VBA macro.
-python "$DIR/run_from_excel.py" "$1" 
+python3 "$DIR/run_from_excel.py" "$1" 
