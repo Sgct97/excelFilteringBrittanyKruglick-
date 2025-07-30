@@ -78,8 +78,8 @@ def compute_address_score(addr1: str, addr2: str) -> float:
         # If house numbers are very different, heavily penalize the score
         num_diff = abs(num1 - num2)
         if num_diff == 0:
-            # Same house number - use full string comparison for format differences
-            return fuzz.ratio(addr1, addr2)
+            # Same house number - check apartment requirements for FullAddress matching
+            return compute_address_with_apartment_check(addr1, addr2)
         elif num_diff <= 2:
             # Very close house numbers (might be adjacent properties) - moderate score
             base_score = fuzz.token_set_ratio(addr1, addr2)
@@ -108,12 +108,63 @@ def compute_individual_scores(row1: pd.Series, row2: pd.Series) -> Tuple[float, 
     address_score = compute_address_score(row1['FullAddress'], row2['FullAddress'])
     return first_score, last_score, address_score
 
-def get_combined_score(scores: Tuple[float, float, float], match_type: str) -> float:
+def compute_address_with_apartment_check(addr1: str, addr2: str) -> float:
+    """Check apartment numbers for FullAddress matching with strict client requirements."""
+    import re
+    
+    # Extract property designators (comprehensive pattern for apartments, units, trailers, lots, etc.)
+    # Must be preceded by space and followed by space+number to avoid matching parts of street names
+    apt_pattern = r'\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+([A-Z0-9]+)'
+    apt1_match = re.search(apt_pattern, addr1, re.IGNORECASE)
+    apt2_match = re.search(apt_pattern, addr2, re.IGNORECASE)
+    
+    # If both have apartment numbers, they must match exactly
+    if apt1_match and apt2_match:
+        apt1 = apt1_match.group(2).upper()  # group(2) is the number, group(1) is the type
+        apt2 = apt2_match.group(2).upper()  # group(2) is the number, group(1) is the type
+        
+        if apt1 != apt2:
+            # Different apartments - client requires no match for FullAddress
+            return 0.0
+    
+    # If only one has apartment number, treat as different addresses
+    elif apt1_match or apt2_match:
+        return 0.0
+    
+    # Same apartment or no apartments - use full string comparison
+    return fuzz.ratio(addr1, addr2)
+
+def strip_apartment_numbers(address: str) -> str:
+    """Remove property designators from address for flexible LastNameAddress matching."""
+    import re
+    # Remove property designator patterns and everything after them
+    # Must be preceded by space and followed by space+number to avoid matching parts of street names
+    apt_pattern = r'\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+[A-Z0-9]+.*'
+    return re.sub(apt_pattern, '', address, flags=re.IGNORECASE).strip().rstrip(',')
+
+def compute_lastname_address_score(row1: pd.Series, row2: pd.Series) -> float:
+    """Compute LastNameAddress score with apartment-flexible matching.
+    
+    Client requirement: For LastNameAddress, match on name + base address,
+    ignoring apartment numbers to catch same person who moved units.
+    """
+    last_score = fuzz.token_set_ratio(row1['Last_Name'], row2['Last_Name'])
+    
+    # Strip apartment numbers for flexible address matching
+    addr1_base = strip_apartment_numbers(row1['FullAddress']) 
+    addr2_base = strip_apartment_numbers(row2['FullAddress'])
+    address_score = fuzz.token_set_ratio(addr1_base, addr2_base)
+    
+    # Combine scores (both must be reasonably high)
+    return (last_score + address_score) / 2 if last_score > 0 and address_score > 0 else 0
+
+def get_combined_score(scores: Tuple[float, float, float], match_type: str, row1: pd.Series = None, row2: pd.Series = None) -> float:
     """Combine individual scores based on match type.
 
     Args:
         scores (Tuple[float, float, float]): First, last, address scores.
         match_type (str): 'FullName', 'LastNameAddress', or 'FullAddress'.
+        row1, row2 (pd.Series): Optional rows for LastNameAddress apartment-flexible matching.
 
     Returns:
         float: Combined score.
@@ -122,7 +173,11 @@ def get_combined_score(scores: Tuple[float, float, float], match_type: str) -> f
     if match_type == 'FullName':
         return (first + last) / 2 if first > 0 and last > 0 else 0
     elif match_type == 'LastNameAddress':
-        return (last + address) / 2 if last > 0 and address > 0 else 0
+        # Use apartment-flexible scoring for LastNameAddress
+        if row1 is not None and row2 is not None:
+            return compute_lastname_address_score(row1, row2)
+        else:
+            return (last + address) / 2 if last > 0 and address > 0 else 0
     elif match_type == 'FullAddress':
         return address
     raise ValueError(f"Unknown match_type: {match_type}")
@@ -153,7 +208,7 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
         best_row2 = None
         for idx2, row2 in df2.iterrows():
             scores = compute_individual_scores(row1, row2)
-            score = get_combined_score(scores, match_type)
+            score = get_combined_score(scores, match_type, row1, row2)
             if score > best_score:
                 best_score = score
                 best_idx2 = idx2
