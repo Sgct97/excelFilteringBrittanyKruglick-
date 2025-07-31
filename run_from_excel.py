@@ -24,19 +24,39 @@ def main():
             print("Error: Could not find two data sheets to compare.")
             return
 
-        df1_raw = all_sheets_dfs[sheet_names[0]]
-        df2_raw = all_sheets_dfs[sheet_names[1]]
+        sheet1_raw = all_sheets_dfs[sheet_names[0]]
+        sheet2_raw = all_sheets_dfs[sheet_names[1]]
         
-        # --- Step 2: Preprocess data once ---
+        # --- Step 2: Auto-detect which sheet is master vs input based on size ---
+        print(f"Found sheet '{sheet_names[0]}': {len(sheet1_raw)} rows")
+        print(f"Found sheet '{sheet_names[1]}': {len(sheet2_raw)} rows")
+        
+        # Larger sheet = master data (search through this)
+        # Smaller sheet = input data (find matches for these)
+        if len(sheet1_raw) > len(sheet2_raw):
+            master_raw = sheet1_raw
+            input_raw = sheet2_raw
+            master_name = sheet_names[0]
+            input_name = sheet_names[1]
+        else:
+            master_raw = sheet2_raw
+            input_raw = sheet1_raw
+            master_name = sheet_names[1]
+            input_name = sheet_names[0]
+            
+        print(f"Using {input_name} ({len(input_raw)} rows) as INPUT data")
+        print(f"Using {master_name} ({len(master_raw)} rows) as MASTER data")
+        
+        # --- Step 3: Preprocess data ---
         print("Preprocessing data...")
-        df1 = preprocess_data(df1_raw)
-        df2 = preprocess_data(df2_raw)
+        df1 = preprocess_data(input_raw)   # df1 = input (smaller)
+        df2 = preprocess_data(master_raw)  # df2 = master (larger)
 
-        # --- Step 3: Run all three match types ---
+        # --- Step 4: Run all three match types ---
         match_types = ['FullName', 'LastNameAddress', 'FullAddress']
         results = {match_type: run_specific_match(df1, df2, match_type) for match_type in match_types}
 
-        # --- Step 4: Write all results back to the workbook ---
+        # --- Step 5: Write all results back to the workbook ---
         print("\nWriting all results back to the workbook...")
         with xw.App(visible=False) as app:
             wb = app.books.open(workbook_path)

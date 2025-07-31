@@ -1,6 +1,6 @@
 import pandas as pd
 import logging
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, process
 from typing import Tuple, Dict
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -78,7 +78,7 @@ def compute_address_score(addr1: str, addr2: str) -> float:
         # If house numbers are very different, heavily penalize the score
         num_diff = abs(num1 - num2)
         if num_diff == 0:
-            # Same house number - check apartment requirements for FullAddress matching
+            # Same house number - check property designators (APT, UNIT, TRLR, LOT, etc.)
             return compute_address_with_apartment_check(addr1, addr2)
         elif num_diff <= 2:
             # Very close house numbers (might be adjacent properties) - moderate score
@@ -94,6 +94,34 @@ def compute_address_score(addr1: str, addr2: str) -> float:
         # No house numbers found - fall back to standard fuzzy matching
         return fuzz.token_set_ratio(addr1, addr2)
 
+def compute_address_with_apartment_check(addr1: str, addr2: str) -> float:
+    """Check property designators for FullAddress matching with strict client requirements."""
+    import re
+    
+    # Extract property designators (comprehensive pattern for apartments, units, trailers, lots, etc.)
+    # Must be preceded by space and followed by space+number to avoid matching parts of street names
+    apt_pattern = r'\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+([A-Z0-9]+)'
+    apt1_match = re.search(apt_pattern, addr1, re.IGNORECASE)
+    apt2_match = re.search(apt_pattern, addr2, re.IGNORECASE)
+    
+    # If both have property designators, they must match exactly
+    if apt1_match and apt2_match:
+        type1 = apt1_match.group(1).upper()  # Property type (APT, UNIT, TRLR, LOT, etc.)
+        num1 = apt1_match.group(2).upper()   # Property number/identifier
+        type2 = apt2_match.group(1).upper()
+        num2 = apt2_match.group(2).upper()
+        
+        # Different property types (TRLR vs LOT) or different numbers = no match
+        if type1 != type2 or num1 != num2:
+            return 0.0
+    
+    # If only one has property designator, treat as different addresses
+    elif apt1_match or apt2_match:
+        return 0.0
+    
+    # Same property designator or no designators - use full string comparison
+    return fuzz.ratio(addr1, addr2)
+
 def compute_individual_scores(row1: pd.Series, row2: pd.Series) -> Tuple[float, float, float]:
     """Compute fuzzy scores for first name, last name, and full address.
 
@@ -108,63 +136,12 @@ def compute_individual_scores(row1: pd.Series, row2: pd.Series) -> Tuple[float, 
     address_score = compute_address_score(row1['FullAddress'], row2['FullAddress'])
     return first_score, last_score, address_score
 
-def compute_address_with_apartment_check(addr1: str, addr2: str) -> float:
-    """Check apartment numbers for FullAddress matching with strict client requirements."""
-    import re
-    
-    # Extract property designators (comprehensive pattern for apartments, units, trailers, lots, etc.)
-    # Must be preceded by space and followed by space+number to avoid matching parts of street names
-    apt_pattern = r'\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+([A-Z0-9]+)'
-    apt1_match = re.search(apt_pattern, addr1, re.IGNORECASE)
-    apt2_match = re.search(apt_pattern, addr2, re.IGNORECASE)
-    
-    # If both have apartment numbers, they must match exactly
-    if apt1_match and apt2_match:
-        apt1 = apt1_match.group(2).upper()  # group(2) is the number, group(1) is the type
-        apt2 = apt2_match.group(2).upper()  # group(2) is the number, group(1) is the type
-        
-        if apt1 != apt2:
-            # Different apartments - client requires no match for FullAddress
-            return 0.0
-    
-    # If only one has apartment number, treat as different addresses
-    elif apt1_match or apt2_match:
-        return 0.0
-    
-    # Same apartment or no apartments - use full string comparison
-    return fuzz.ratio(addr1, addr2)
-
-def strip_apartment_numbers(address: str) -> str:
-    """Remove property designators from address for flexible LastNameAddress matching."""
-    import re
-    # Remove property designator patterns and everything after them
-    # Must be preceded by space and followed by space+number to avoid matching parts of street names
-    apt_pattern = r'\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+[A-Z0-9]+.*'
-    return re.sub(apt_pattern, '', address, flags=re.IGNORECASE).strip().rstrip(',')
-
-def compute_lastname_address_score(row1: pd.Series, row2: pd.Series) -> float:
-    """Compute LastNameAddress score with apartment-flexible matching.
-    
-    Client requirement: For LastNameAddress, match on name + base address,
-    ignoring apartment numbers to catch same person who moved units.
-    """
-    last_score = fuzz.token_set_ratio(row1['Last_Name'], row2['Last_Name'])
-    
-    # Strip apartment numbers for flexible address matching
-    addr1_base = strip_apartment_numbers(row1['FullAddress']) 
-    addr2_base = strip_apartment_numbers(row2['FullAddress'])
-    address_score = fuzz.token_set_ratio(addr1_base, addr2_base)
-    
-    # Combine scores (both must be reasonably high)
-    return (last_score + address_score) / 2 if last_score > 0 and address_score > 0 else 0
-
-def get_combined_score(scores: Tuple[float, float, float], match_type: str, row1: pd.Series = None, row2: pd.Series = None) -> float:
+def get_combined_score(scores: Tuple[float, float, float], match_type: str) -> float:
     """Combine individual scores based on match type.
 
     Args:
         scores (Tuple[float, float, float]): First, last, address scores.
         match_type (str): 'FullName', 'LastNameAddress', or 'FullAddress'.
-        row1, row2 (pd.Series): Optional rows for LastNameAddress apartment-flexible matching.
 
     Returns:
         float: Combined score.
@@ -173,17 +150,33 @@ def get_combined_score(scores: Tuple[float, float, float], match_type: str, row1
     if match_type == 'FullName':
         return (first + last) / 2 if first > 0 and last > 0 else 0
     elif match_type == 'LastNameAddress':
-        # Use apartment-flexible scoring for LastNameAddress
-        if row1 is not None and row2 is not None:
-            return compute_lastname_address_score(row1, row2)
-        else:
-            return (last + address) / 2 if last > 0 and address > 0 else 0
+        return (last + address) / 2 if last > 0 and address > 0 else 0
     elif match_type == 'FullAddress':
         return address
     raise ValueError(f"Unknown match_type: {match_type}")
 
+def create_search_string(row: pd.Series, match_type: str) -> str:
+    """Create search string based on match type for process.extractOne.
+    
+    Args:
+        row (pd.Series): Row to create search string from.
+        match_type (str): Type of match to optimize for.
+        
+    Returns:
+        str: Optimized search string.
+    """
+    if match_type == 'FullName':
+        return f"{row['First_Name']} {row['Last_Name']}".strip()
+    elif match_type == 'LastNameAddress':
+        return f"{row['Last_Name']} {row['FullAddress']}".strip()
+    elif match_type == 'FullAddress':
+        return row['FullAddress']
+    raise ValueError(f"Unknown match_type: {match_type}")
+
+
+
 def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, threshold: float = None) -> pd.DataFrame:
-    """Find best fuzzy match for each row in df1 from df2 based on match_type.
+    """Find best fuzzy match for each row in df1 from df2 using optimized approach.
 
     Args:
         df1, df2 (pd.DataFrame): Preprocessed DataFrames.
@@ -201,18 +194,53 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
             'FullAddress': 80.0      # High threshold - we want actual address matches, not geographic area
         }
         threshold = thresholds.get(match_type, 80.0)
+    
+    logging.info(f"Processing {len(df1)} rows against {len(df2)} master records for {match_type}...")
+    
+    # Pre-compute search strings ONCE (not for every input row!)
+    logging.info("Pre-computing search strings for master data...")
+    df2_list = list(df2.iterrows())  # [(actual_idx, row), ...]
+    search_strings = [create_search_string(row2, match_type) for actual_idx, row2 in df2_list]
+    logging.info(f"Pre-computed {len(search_strings)} search strings.")
+    
     results = []
     for idx1, row1 in df1.iterrows():
+        if (idx1 + 1) % 100 == 0:  # Progress logging
+            logging.info(f"Processed {idx1 + 1}/{len(df1)} rows...")
+            
         best_score = 0
         best_idx2 = None
         best_row2 = None
-        for idx2, row2 in df2.iterrows():
+        
+        # Use process.extract for initial filtering, then verify with our custom logic
+        query_str = create_search_string(row1, match_type)
+        
+        # Get top candidates using process.extract (much faster than nested loop)
+        candidates = process.extract(
+            query_str,
+            search_strings,
+            scorer=fuzz.token_set_ratio,
+            limit=10  # Get top 10 candidates for verification
+        )
+        
+        # Verify candidates with our sophisticated scoring logic
+        for candidate_str, candidate_score, list_position in candidates:
+            if candidate_score < threshold * 0.8:  # Skip obviously poor matches
+                break
+            
+            # Get the actual DataFrame row using the correct mapping
+            actual_df_idx, row2 = df2_list[list_position]
+            
+            # Use our sophisticated scoring logic
             scores = compute_individual_scores(row1, row2)
-            score = get_combined_score(scores, match_type, row1, row2)
-            if score > best_score:
-                best_score = score
-                best_idx2 = idx2
+            accurate_score = get_combined_score(scores, match_type)
+            
+            if accurate_score > best_score:
+                best_score = accurate_score
+                best_idx2 = actual_df_idx  # Use the actual DataFrame index
                 best_row2 = row2
+        
+        # Add result if above threshold
         if best_score >= threshold and best_row2 is not None:
             name_a = f"{row1['First_Name']} {row1['Last_Name']}".strip()
             name_b = f"{best_row2['First_Name']} {best_row2['Last_Name']}".strip()
@@ -225,6 +253,7 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
                 'Address A': row1['FullAddress'],
                 'Address B': best_row2['FullAddress']
             })
+    
     results_df = pd.DataFrame(results)
     if not results_df.empty:
         results_df = results_df.sort_values(by='Match Score', ascending=False)
