@@ -278,14 +278,44 @@ class FuzzyMatcherApp:
                     # Copy original sheets first
                     for sheet_name, df in data_sheets.items():
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        self.log_message(f"📋 Copied '{sheet_name}' sheet")
+                        
+                        # Auto-resize columns for original data sheets too
+                        worksheet = writer.sheets[sheet_name]
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = column[0].column_letter
+                            for cell in column:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except:
+                                    pass
+                            adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                            worksheet.column_dimensions[column_letter].width = adjusted_width
+                        
+                        self.log_message(f"📋 Copied '{sheet_name}' sheet with auto-sized columns")
                     
                     # Add results sheets
                     for match_type, results_df in results.items():
                         if not results_df.empty:
                             sheet_name = f'results_{match_type}'
                             results_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            self.log_message(f"📝 Created '{sheet_name}' sheet")
+                            
+                            # Auto-resize columns to show full data
+                            worksheet = writer.sheets[sheet_name]
+                            for column in worksheet.columns:
+                                max_length = 0
+                                column_letter = column[0].column_letter
+                                for cell in column:
+                                    try:
+                                        if len(str(cell.value)) > max_length:
+                                            max_length = len(str(cell.value))
+                                    except:
+                                        pass
+                                adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                                worksheet.column_dimensions[column_letter].width = adjusted_width
+                            
+                            self.log_message(f"📝 Created '{sheet_name}' sheet with auto-sized columns")
                 
                 self.log_message(f"✅ Successfully wrote file: {new_file_path}")
                     
