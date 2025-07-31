@@ -119,7 +119,38 @@ def compute_address_with_apartment_check(addr1: str, addr2: str) -> float:
     elif apt1_match or apt2_match:
         return 0.0
     
-    # Same property designator or no designators - use full string comparison
+    # Same property designator or no designators - validate street names first
+    # Extract street names to check if they're actually similar
+    import re
+    
+    # Extract street names (between house number and first comma)
+    street1 = re.sub(r'^\d+\s*', '', addr1.strip()).split(',')[0].strip()
+    street2 = re.sub(r'^\d+\s*', '', addr2.strip()).split(',')[0].strip()
+    
+    # Check if street names are similar with smart abbreviation handling
+    from rapidfuzz import fuzz
+    
+    # First normalize common street abbreviations
+    def normalize_street(street):
+        return (street.replace(' STREET', ' ST')
+                     .replace(' ROAD', ' RD') 
+                     .replace(' AVENUE', ' AVE')
+                     .replace(' LANE', ' LN')
+                     .replace(' DRIVE', ' DR')
+                     .replace(' COURT', ' CT')
+                     .replace(' PLACE', ' PL'))
+    
+    norm_street1 = normalize_street(street1)
+    norm_street2 = normalize_street(street2)
+    
+    # Check similarity after normalization
+    street_similarity = fuzz.token_set_ratio(norm_street1, norm_street2)
+    
+    # If streets are very different after normalization, cap the score
+    if street_similarity < 78:  # Just below the ALICE/VALERIE score (77.78%)
+        return min(fuzz.ratio(addr1, addr2) * 0.7, 65.0)  # Cap at 65% for different streets
+    
+    # Streets are similar - use full string comparison
     return fuzz.ratio(addr1, addr2)
 
 def compute_individual_scores(row1: pd.Series, row2: pd.Series) -> Tuple[float, float, float]:
