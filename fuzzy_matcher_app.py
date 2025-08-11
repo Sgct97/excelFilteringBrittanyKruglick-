@@ -21,6 +21,7 @@ from fuzzy_matcher import (
     run_specific_match,
     preprocess_data,
     preprocess_input_variable,
+    preprocess_master_with_opens,
     SchemaError,
 )
 
@@ -251,7 +252,7 @@ class FuzzyMatcherApp:
                 self.log_message(str(se))
                 return
 
-            df2 = preprocess_data(master_df)
+            df2, opens_missing = preprocess_master_with_opens(master_df)
             
             # Run fuzzy matching
             # Determine enabled match types from report
@@ -320,6 +321,19 @@ class FuzzyMatcherApp:
                     for match_type, results_df in results.items():
                         if not results_df.empty:
                             sheet_name = f'results_{match_type}'
+                            # Append Opens as rightmost column when available or blank with reason if missing
+                            if 'Opens' in df2.columns:
+                                results_df = results_df.copy()
+                                # Merge Opens from master by 'Sheet B Row' (Excel 1-based)
+                                # Convert to 0-based index for df2 alignment
+                                try:
+                                    opens_map = df2['Opens']
+                                    results_df['Opens'] = results_df['Sheet B Row'].apply(lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else "")
+                                except Exception:
+                                    results_df['Opens'] = ""
+                            else:
+                                results_df = results_df.copy()
+                                results_df['Opens'] = ""  # OPENS_NO_MATCH case
                             results_df.to_excel(writer, sheet_name=sheet_name, index=False)
                             
                             # Auto-resize columns to show full data
@@ -336,7 +350,10 @@ class FuzzyMatcherApp:
                                 adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
                                 worksheet.column_dimensions[column_letter].width = adjusted_width
                             
-                            self.log_message(f"📝 Created '{sheet_name}' sheet with auto-sized columns")
+                            if opens_missing:
+                                self.log_message(f"📝 Created '{sheet_name}' with 'Opens' blank (OPENS_NO_MATCH)")
+                            else:
+                                self.log_message(f"📝 Created '{sheet_name}' with 'Opens' column appended")
                 
                 self.log_message(f"✅ Successfully wrote file: {new_file_path}")
                     

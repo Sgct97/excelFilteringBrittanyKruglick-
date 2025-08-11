@@ -1,7 +1,7 @@
 import pandas as pd
 import logging
 from rapidfuzz import fuzz, process
-from typing import Tuple, Dict, List, Any
+from typing import Tuple, Dict, List, Any, Optional
 
 # Schema detection for variable-format small input sheet (Milestone 3)
 from schema_detection import (
@@ -81,29 +81,25 @@ def preprocess_input_variable(df: pd.DataFrame, *, file: str, sheet: str) -> Tup
     # Build standardized frame deterministically using only mapped/derivable fields
     std = pd.DataFrame(index=df.index)
 
-    # Names
-    if "First_Name" in mapping and mapping["First_Name"].source:
-        std["First_Name"] = df[mapping["First_Name"].source].fillna("").astype(str)
-    elif "FullName" in mapping and mapping["FullName"].source:
-        # Split deterministically
+    # Names: prefer deriving from FullName when available to ensure consistency
+    if "FullName" in mapping and mapping["FullName"].source:
         first_vals: List[str] = []
-        for v in df[mapping["FullName"].source].fillna("").astype(str).tolist():
-            f, _ = split_full_name(v)
-            first_vals.append(f)
-        std["First_Name"] = first_vals
-    else:
-        std["First_Name"] = ""
-
-    if "Last_Name" in mapping and mapping["Last_Name"].source:
-        std["Last_Name"] = df[mapping["Last_Name"].source].fillna("").astype(str)
-    elif "FullName" in mapping and mapping["FullName"].source:
         last_vals: List[str] = []
         for v in df[mapping["FullName"].source].fillna("").astype(str).tolist():
-            _, l = split_full_name(v)
+            f, l = split_full_name(v)
+            first_vals.append(f)
             last_vals.append(l)
+        std["First_Name"] = first_vals
         std["Last_Name"] = last_vals
     else:
-        std["Last_Name"] = ""
+        if "First_Name" in mapping and mapping["First_Name"].source:
+            std["First_Name"] = df[mapping["First_Name"].source].fillna("").astype(str)
+        else:
+            std["First_Name"] = ""
+        if "Last_Name" in mapping and mapping["Last_Name"].source:
+            std["Last_Name"] = df[mapping["Last_Name"].source].fillna("").astype(str)
+        else:
+            std["Last_Name"] = ""
 
     # Address parts
     if "Address1" in mapping and mapping["Address1"].source:
@@ -146,6 +142,53 @@ def preprocess_input_variable(df: pd.DataFrame, *, file: str, sheet: str) -> Tup
         std[col] = std[col].fillna("").astype(str).str.upper().str.strip()
 
     return std, report
+
+
+def _normalize_header_simple(header: str) -> str:
+    import re as _re
+    return _re.sub(r"[^a-z0-9]", "", str(header).strip().lower())
+
+
+def _detect_opens_header(columns: List[str]) -> Optional[str]:
+    """Find an opens-like column by header variants (case/punct insensitive)."""
+    variants = [
+        "opens",
+        "open",
+        "opened",
+        "opening",
+        "opens?",
+    ]
+    targets = {_normalize_header_simple(v) for v in variants}
+    for col in columns:
+        if _normalize_header_simple(col) in targets:
+            return col
+    return None
+
+
+def preprocess_master_with_opens(df_master_raw: pd.DataFrame) -> Tuple[pd.DataFrame, bool]:
+    """Preprocess master sheet and attach standardized 'Opens' column if present.
+
+    Returns (df_master_processed, opens_missing_flag).
+    - 'Opens' values standardized to 'x' or '' (blank). Only 'x'/'X' counts.
+    - If no opens column found, opens_missing_flag=True and 'Opens' is not added.
+    """
+    # Detect opens before dropping extra columns
+    opens_col = _detect_opens_header(list(df_master_raw.columns))
+
+    # Run normal preprocessing first
+    df2 = preprocess_data(df_master_raw)
+
+    if opens_col is None:
+        return df2, True
+
+    # Map opens to 'x' or '' aligned by original index
+    raw_series = df_master_raw[opens_col]
+    normalized = raw_series.astype(str).fillna("").str.strip().str.lower().apply(lambda v: "x" if v == "x" else "")
+
+    # Align to df2 by index (preprocess_data preserves index)
+    df2 = df2.copy()
+    df2["Opens"] = normalized.reindex(df2.index).fillna("")
+    return df2, False
 
 def compute_address_score(addr1: str, addr2: str) -> float:
     """Compute address similarity score that properly handles house numbers.

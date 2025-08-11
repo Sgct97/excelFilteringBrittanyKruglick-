@@ -5,6 +5,7 @@ from fuzzy_matcher import (
     preprocess_data,
     run_specific_match,
     preprocess_input_variable,
+    preprocess_master_with_opens,
     SchemaError,
 )
 
@@ -59,7 +60,7 @@ def main():
         except SchemaError as se:
             print(str(se))
             return
-        df2 = preprocess_data(master_raw)  # df2 = master (larger)
+        df2, opens_missing = preprocess_master_with_opens(master_raw)  # df2 = master (larger)
 
         # --- Step 4: Choose enabled match types ---
         all_types = ['FullName', 'LastNameAddress', 'FullAddress']
@@ -83,6 +84,15 @@ def main():
                 else:
                     wb.sheets.add(sheet_name)
                 
+                # Append Opens rightmost
+                if 'Opens' in df2.columns:
+                    results_df = results_df.copy()
+                    opens_map = df2['Opens']
+                    results_df['Opens'] = results_df['Sheet B Row'].apply(lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else "")
+                else:
+                    results_df = results_df.copy()
+                    results_df['Opens'] = ""  # OPENS_NO_MATCH
+
                 wb.sheets[sheet_name].range('A1').options(index=False).value = results_df
                 wb.sheets[sheet_name].autofit()
 
