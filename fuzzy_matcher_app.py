@@ -17,15 +17,21 @@ import glob
 from pathlib import Path
 
 # Import our fuzzy matching logic
-from fuzzy_matcher import run_specific_match, preprocess_data
+from fuzzy_matcher import (
+    run_specific_match,
+    preprocess_data,
+    preprocess_input_variable,
+    SchemaError,
+)
 
 
 class FuzzyMatcherApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Fuzzy Matcher")
-        self.root.geometry("500x400")
-        self.root.resizable(False, False)
+        self.root.geometry("650x500")
+        self.root.resizable(True, True)
+        self.root.minsize(500, 400)
         
         # Center the window
         self.center_window()
@@ -77,44 +83,42 @@ class FuzzyMatcherApp:
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=20)
         
-        # Auto-find button
-        auto_button = tk.Button(
+        # Main process button
+        process_button = tk.Button(
             button_frame,
-            text="🎯 Auto-Find & Process",
-            command=self.auto_find_and_process,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 12, "bold"),
-            padx=20,
-            pady=10,
-            width=20
-        )
-        auto_button.pack(pady=5)
-        
-        # Manual file selection button
-        manual_button = tk.Button(
-            button_frame,
-            text="📁 Choose File",
+            text="📁 Select Excel File & Process",
             command=self.choose_file_and_process,
-            bg="#2196F3", 
-            fg="white",
-            font=("Arial", 12),
-            padx=20,
-            pady=10,
-            width=20
+            bg="#E8F5E8", 
+            fg="black",
+            font=("Arial", 14, "bold"),
+            padx=25,
+            pady=15,
+            width=25,
+            relief="raised",
+            bd=2
         )
-        manual_button.pack(pady=5)
+        process_button.pack(pady=10)
         
-        # Status text area
+        # Status text area with scrollbar
+        text_frame = tk.Frame(self.root)
+        text_frame.pack(pady=20, padx=20, fill=tk.BOTH, expand=True)
+        
         self.status_text = tk.Text(
-            self.root, 
-            height=8, 
-            width=60,
+            text_frame, 
+            height=12, 
+            width=70,
             wrap=tk.WORD,
             state=tk.DISABLED,
-            bg="#f0f0f0"
+            bg="#f0f0f0",
+            font=("Courier", 10)
         )
-        self.status_text.pack(pady=20, padx=20, fill=tk.BOTH, expand=True)
+        
+        # Add scrollbar
+        scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.status_text.yview)
+        self.status_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.status_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Add initial message
         self.log_message("Ready to process Excel files! 🚀")
@@ -239,26 +243,43 @@ class FuzzyMatcherApp:
             self.log_message(f"📊 INPUT: {input_name} ({len(input_df)} rows)")
             self.log_message(f"📊 MASTER: {master_name} ({len(master_df)} rows)")
             
-            # Preprocess data
-            self.log_message("🔧 Preprocessing data...")
-            df1 = preprocess_data(input_df)
+            # Preprocess data (variable input schema)
+            self.log_message("🔧 Preprocessing data (variable input schema)...")
+            try:
+                df1, report = preprocess_input_variable(input_df, file=file_path, sheet=input_name)
+            except SchemaError as se:
+                self.log_message(str(se))
+                return
+
             df2 = preprocess_data(master_df)
             
             # Run fuzzy matching
-            match_types = ['FullName', 'LastNameAddress', 'FullAddress']
+            # Determine enabled match types from report
+            all_types = ['FullName', 'LastNameAddress', 'FullAddress']
+            match_types = []
+            for mt in all_types:
+                if report.get(mt, {}).get('enabled'):
+                    match_types.append(mt)
+                else:
+                    reason = report.get(mt, {}).get('reason')
+                    self.log_message(f"⏭️  Skipping {mt}: {reason}")
             results = {}
             
-            for match_type in match_types:
-                self.log_message(f"\n🎯 Running {match_type} matching...")
+            for i, match_type in enumerate(match_types, 1):
+                self.log_message(f"\n🎯 Running {match_type} matching... ({i}/3)")
                 self.root.update()  # Keep UI responsive
                 
                 results_df = run_specific_match(df1, df2, match_type)
                 results[match_type] = results_df
                 
+                self.root.update()  # Update GUI after processing
+                
                 if not results_df.empty:
                     self.log_message(f"✅ Found {len(results_df)} {match_type} matches")
                 else:
                     self.log_message(f"⚠️  No {match_type} matches found")
+                    
+                self.root.update()  # Ensure message appears immediately
                     
             # Write results to a NEW file to avoid corruption  
             self.log_message("\n💾 Writing results to new Excel file...")

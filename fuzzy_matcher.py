@@ -1,7 +1,15 @@
 import pandas as pd
 import logging
 from rapidfuzz import fuzz, process
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List, Any
+
+# Schema detection for variable-format small input sheet (Milestone 3)
+from schema_detection import (
+    detect_schema,
+    evaluate_match_types,
+    split_full_name,
+    SchemaError,
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -53,6 +61,91 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     df_processed = df_processed.drop(columns=extra_cols, errors='ignore')
 
     return df_processed
+
+
+def preprocess_input_variable(df: pd.DataFrame, *, file: str, sheet: str) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Any]]]:
+    """Preprocess variable-format INPUT DataFrame using schema detection.
+
+    Returns standardized DataFrame with columns: First_Name, Last_Name, Address1, City, State, Zip, FullAddress
+    and a match type report indicating which match types are enabled.
+    Follows fail-fast rules for header ambiguity; skips match types later based on report.
+    """
+    try:
+        mapping = detect_schema(list(df.columns), file=file, sheet=sheet)
+    except SchemaError as e:
+        # Re-raise to caller to surface in GUI/console
+        raise
+
+    report = evaluate_match_types(mapping)
+
+    # Build standardized frame deterministically using only mapped/derivable fields
+    std = pd.DataFrame(index=df.index)
+
+    # Names
+    if "First_Name" in mapping and mapping["First_Name"].source:
+        std["First_Name"] = df[mapping["First_Name"].source].fillna("").astype(str)
+    elif "FullName" in mapping and mapping["FullName"].source:
+        # Split deterministically
+        first_vals: List[str] = []
+        for v in df[mapping["FullName"].source].fillna("").astype(str).tolist():
+            f, _ = split_full_name(v)
+            first_vals.append(f)
+        std["First_Name"] = first_vals
+    else:
+        std["First_Name"] = ""
+
+    if "Last_Name" in mapping and mapping["Last_Name"].source:
+        std["Last_Name"] = df[mapping["Last_Name"].source].fillna("").astype(str)
+    elif "FullName" in mapping and mapping["FullName"].source:
+        last_vals: List[str] = []
+        for v in df[mapping["FullName"].source].fillna("").astype(str).tolist():
+            _, l = split_full_name(v)
+            last_vals.append(l)
+        std["Last_Name"] = last_vals
+    else:
+        std["Last_Name"] = ""
+
+    # Address parts
+    if "Address1" in mapping and mapping["Address1"].source:
+        std["Address1"] = df[mapping["Address1"].source].fillna("").astype(str)
+    else:
+        std["Address1"] = ""
+
+    if "City" in mapping and mapping["City"].source:
+        std["City"] = df[mapping["City"].source].fillna("").astype(str)
+    else:
+        std["City"] = ""
+
+    if "State" in mapping and mapping["State"].source:
+        std["State"] = df[mapping["State"].source].fillna("").astype(str)
+    else:
+        std["State"] = ""
+
+    if "Zip" in mapping and mapping["Zip"].source:
+        std["Zip"] = df[mapping["Zip"].source].fillna("").astype(str)
+    else:
+        std["Zip"] = ""
+
+    # FullAddress
+    if "FullAddress" in mapping and mapping["FullAddress"].source:
+        std["FullAddress"] = df[mapping["FullAddress"].source].fillna("").astype(str)
+    else:
+        # Derive if parts exist
+        std["FullAddress"] = (
+            std["Address1"].astype(str).fillna("")
+            + ", "
+            + std["City"].astype(str).fillna("")
+            + ", "
+            + std["State"].astype(str).fillna("")
+            + " "
+            + std["Zip"].astype(str).fillna("")
+        ).str.strip(", ")
+
+    # Normalize to uppercase/trim to match existing matcher expectations
+    for col in ["First_Name", "Last_Name", "Address1", "City", "State", "Zip", "FullAddress"]:
+        std[col] = std[col].fillna("").astype(str).str.upper().str.strip()
+
+    return std, report
 
 def compute_address_score(addr1: str, addr2: str) -> float:
     """Compute address similarity score that properly handles house numbers.

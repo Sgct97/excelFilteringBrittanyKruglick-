@@ -1,7 +1,12 @@
 import pandas as pd
 import xlwings as xw
 import sys
-from fuzzy_matcher import preprocess_data, run_specific_match
+from fuzzy_matcher import (
+    preprocess_data,
+    run_specific_match,
+    preprocess_input_variable,
+    SchemaError,
+)
 
 def main():
     """
@@ -47,13 +52,23 @@ def main():
         print(f"Using {input_name} ({len(input_raw)} rows) as INPUT data")
         print(f"Using {master_name} ({len(master_raw)} rows) as MASTER data")
         
-        # --- Step 3: Preprocess data ---
-        print("Preprocessing data...")
-        df1 = preprocess_data(input_raw)   # df1 = input (smaller)
+        # --- Step 3: Preprocess data (variable input schema) ---
+        print("Preprocessing data (variable input schema)...")
+        try:
+            df1, report = preprocess_input_variable(input_raw, file=workbook_path, sheet=input_name)
+        except SchemaError as se:
+            print(str(se))
+            return
         df2 = preprocess_data(master_raw)  # df2 = master (larger)
 
-        # --- Step 4: Run all three match types ---
-        match_types = ['FullName', 'LastNameAddress', 'FullAddress']
+        # --- Step 4: Choose enabled match types ---
+        all_types = ['FullName', 'LastNameAddress', 'FullAddress']
+        match_types = [mt for mt in all_types if report.get(mt, {}).get('enabled')]
+        for mt in all_types:
+            if mt not in match_types:
+                reason = report.get(mt, {}).get('reason')
+                print(f"Skipping {mt}: {reason}")
+
         results = {match_type: run_specific_match(df1, df2, match_type) for match_type in match_types}
 
         # --- Step 5: Write all results back to the workbook ---
