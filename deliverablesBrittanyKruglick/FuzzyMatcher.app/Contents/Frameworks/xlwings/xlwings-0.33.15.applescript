@@ -1,0 +1,1 @@
+../../Resources/xlwings/xlwings-0.33.15.applescript

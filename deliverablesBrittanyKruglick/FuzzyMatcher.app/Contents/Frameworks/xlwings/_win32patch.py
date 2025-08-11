@@ -1,0 +1,1 @@
+../../Resources/xlwings/_win32patch.py

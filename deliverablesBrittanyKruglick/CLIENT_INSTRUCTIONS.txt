@@ -1,0 +1,94 @@
+FUZZY MATCHER TOOL - CLIENT INSTRUCTIONS
+========================================
+
+WHAT THIS TOOL DOES
+-------------------
+This tool finds matching people across two datasets using "fuzzy matching" - it can match names and addresses even when there are typos, abbreviations, or formatting differences.
+
+SETUP REQUIREMENTS
+------------------
+• Mac computer (macOS)
+• Excel file with your data
+• No additional software needed - everything is included!
+
+HOW TO PREPARE YOUR DATA
+------------------------
+1. Open Excel and create a workbook with exactly 2 sheets:
+   
+   SHEET 1 - Small Input Data (people you want to find matches for)
+   • Should have columns like: First_Name, Last_Name, Address1, City, State, Zip
+   • This is typically your smaller dataset (e.g., 100-1000 rows)
+   
+   SHEET 2 - Master Database (large reference dataset)  
+   • Should have the same column structure as Sheet 1
+   • This is your large reference dataset (e.g., 10,000-100,000 rows)
+   
+   COLUMN NAMES: The tool accepts variations like:
+   • Names: First_Name, FirstName, Last_Name, LastName, Full_Name, FullName
+   • Address: Address1, Address, FullAddress, City, State, Zip
+
+2. Save your file as .xlsx or .xlsm format
+
+HOW TO RUN THE TOOL
+-------------------
+1. Double-click "FuzzyMatcher.app" to open the tool
+2. Click "📁 Select Excel File & Process" 
+3. Choose your prepared Excel file
+4. Wait for processing (progress will show in the window)
+5. When complete, you'll see "✅ Processing complete!"
+
+UNDERSTANDING YOUR RESULTS
+--------------------------
+The tool creates a NEW Excel file with timestamp (e.g., "MyData_RESULTS_20250801_143000.xlsx")
+Your original file is never modified!
+
+The results file contains:
+• Your original data sheets (unchanged)
+• 3 new results sheets with different matching strategies:
+
+RESULTS_FULLNAME - Matches people by name only
+• Finds the same person even with different addresses
+• Example: "John Smith, NYC" matches "John Smith, Boston"
+
+RESULTS_LASTNAMEADDRESS - Matches by last name + address
+• Finds people with same last name at same address
+• Example: "John Smith, 123 Main St" matches "Mary Smith, 123 Main Street"
+• Ignores apartment numbers for flexible matching
+
+RESULTS_FULLADDRESS - Matches by full address only  
+• Finds anyone living at the exact same address
+• Example: "John Smith, 123 Main St Apt 5" matches "Mary Jones, 123 Main Street Apt 5"
+• Apartment numbers must match exactly
+
+RESULT COLUMNS EXPLAINED
+------------------------
+Each results sheet contains these columns:
+• Match Score: How confident the match is (higher = better match)
+• Sheet A Row: Row number from your input data  
+• Sheet B Row: Row number from your master database
+• Name A: Name from your input data
+• Name B: Name from master database  
+• Address A: Address from your input data
+• Address B: Address from master database
+
+TROUBLESHOOTING
+---------------
+• App won't open: Right-click → Open, then click "Open" when macOS asks
+• No matches found: Check that your column names match the expected format
+• Takes too long: Large datasets can take 30+ minutes - this is normal
+• Results file not found: Look for the timestamped file in the same folder as your input
+
+TIPS FOR BEST RESULTS
+--------------------
+• Use consistent formatting across both sheets
+• Review results manually for final verification
+
+SUPPORT
+-------
+If you encounter issues, check that:
+1. Your Excel file has exactly 2 data sheets
+2. Column names follow the expected format
+3. Data is clean and properly formatted
+4. You have enough disk space for the results file
+
+The tool is designed to be safe - it never modifies your original data.

@@ -1,0 +1,81 @@
+{
+  "workbook": "FuzzyMatch_Tool.xlsm",
+  "input_sheet": "Sheet1",
+  "master_sheet": "COLONIAL NEW LONDON_FILE",
+  "columns": [
+    "First_Name",
+    "Last_Name",
+    "First_Name_CB",
+    "Last_Name_CB",
+    "Address1",
+    "State",
+    "City",
+    "Zip"
+  ],
+  "mapping": {
+    "First_Name": {
+      "canonical": "First_Name",
+      "source": "First_Name",
+      "derived": null
+    },
+    "Last_Name": {
+      "canonical": "Last_Name",
+      "source": "Last_Name",
+      "derived": null
+    },
+    "Address1": {
+      "canonical": "Address1",
+      "source": "Address1",
+      "derived": null
+    },
+    "City": {
+      "canonical": "City",
+      "source": "City",
+      "derived": null
+    },
+    "State": {
+      "canonical": "State",
+      "source": "State",
+      "derived": null
+    },
+    "Zip": {
+      "canonical": "Zip",
+      "source": "Zip",
+      "derived": null
+    },
+    "FullName": {
+      "canonical": "FullName",
+      "source": null,
+      "derived": "concat(First_Name, ' ', Last_Name)"
+    },
+    "FullAddress": {
+      "canonical": "FullAddress",
+      "source": null,
+      "derived": "concat(Address1, ', ', City, ', ', State, ' ', Zip)"
+    }
+  },
+  "match_types": {
+    "FullName": {
+      "enabled": true,
+      "reason": null,
+      "required": [
+        "First_Name & Last_Name"
+      ]
+    },
+    "LastNameAddress": {
+      "enabled": true,
+      "reason": null,
+      "required": [
+        "Last_Name",
+        "FullAddress or Address1+City+State+Zip"
+      ]
+    },
+    "FullAddress": {
+      "enabled": true,
+      "reason": null,
+      "required": [
+        "FullAddress or Address1+City+State+Zip"
+      ]
+    }
+  }
+}

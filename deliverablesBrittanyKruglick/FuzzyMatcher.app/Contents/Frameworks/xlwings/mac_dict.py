@@ -1,0 +1,1 @@
+../../Resources/xlwings/mac_dict.py

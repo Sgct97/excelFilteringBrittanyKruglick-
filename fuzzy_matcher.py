@@ -122,20 +122,28 @@ def preprocess_input_variable(df: pd.DataFrame, *, file: str, sheet: str) -> Tup
     else:
         std["Zip"] = ""
 
-    # FullAddress
+    # FullAddress (include Address2 when available to capture UNIT/APT)
     if "FullAddress" in mapping and mapping["FullAddress"].source:
         std["FullAddress"] = df[mapping["FullAddress"].source].fillna("").astype(str)
     else:
-        # Derive if parts exist
+        addr2_vals = None
+        if "Address2" in mapping and mapping["Address2"].source:
+            addr2_vals = df[mapping["Address2"].source].fillna("").astype(str)
+
+        if addr2_vals is not None:
+            addr_line = (std["Address1"].astype(str).fillna("") + " " + addr2_vals).str.replace(r"\s+", " ", regex=True).str.strip()
+        else:
+            addr_line = std["Address1"].astype(str).fillna("")
+
         std["FullAddress"] = (
-            std["Address1"].astype(str).fillna("")
+            addr_line
             + ", "
             + std["City"].astype(str).fillna("")
             + ", "
             + std["State"].astype(str).fillna("")
             + " "
             + std["Zip"].astype(str).fillna("")
-        ).str.strip(", ")
+        ).str.replace(r"\s+", " ", regex=True).str.strip(", ")
 
     # Normalize to uppercase/trim to match existing matcher expectations
     for col in ["First_Name", "Last_Name", "Address1", "City", "State", "Zip", "FullAddress"]:
@@ -303,6 +311,13 @@ def compute_individual_scores(row1: pd.Series, row2: pd.Series) -> Tuple[float, 
     address_score = compute_address_score(row1['FullAddress'], row2['FullAddress'])
     return first_score, last_score, address_score
 
+
+def _strip_property_designators(addr: str) -> str:
+    """Remove apartment/unit/trailer/lot designators from an address."""
+    import re
+    pattern = r"\s(APT|APARTMENT|UNIT|TRLR|TRAILER|LOT|BLDG|BUILDING|STE|SUITE|FLOOR|FL|RM|ROOM|SPACE|SPC|#)\s+[A-Z0-9]+"
+    return re.sub(pattern, "", addr, flags=re.IGNORECASE).replace("  ", " ").strip()
+
 def get_combined_score(scores: Tuple[float, float, float], match_type: str) -> float:
     """Combine individual scores based on match type.
 
@@ -317,6 +332,7 @@ def get_combined_score(scores: Tuple[float, float, float], match_type: str) -> f
     if match_type == 'FullName':
         return (first + last) / 2 if first > 0 and last > 0 else 0
     elif match_type == 'LastNameAddress':
+        # For LastNameAddress, ignore property designators in address to avoid penalizing unit differences
         return (last + address) / 2 if last > 0 and address > 0 else 0
     elif match_type == 'FullAddress':
         return address
@@ -335,7 +351,8 @@ def create_search_string(row: pd.Series, match_type: str) -> str:
     if match_type == 'FullName':
         return f"{row['First_Name']} {row['Last_Name']}".strip()
     elif match_type == 'LastNameAddress':
-        return f"{row['Last_Name']} {row['FullAddress']}".strip()
+        # Strip property designators from address portion when constructing search string for candidate filtering
+        return f"{row['Last_Name']} {_strip_property_designators(row['FullAddress'])}".strip()
     elif match_type == 'FullAddress':
         return row['FullAddress']
     raise ValueError(f"Unknown match_type: {match_type}")
@@ -399,7 +416,16 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
             actual_df_idx, row2 = df2_list[list_position]
             
             # Use our sophisticated scoring logic
-            scores = compute_individual_scores(row1, row2)
+            if match_type == 'LastNameAddress':
+                # Recompute address score with designators removed for this strategy
+                addr1 = _strip_property_designators(row1['FullAddress'])
+                addr2 = _strip_property_designators(row2['FullAddress'])
+                first_score = fuzz.token_set_ratio(row1['First_Name'], row2['First_Name'])
+                last_score = fuzz.token_set_ratio(row1['Last_Name'], row2['Last_Name'])
+                address_score = compute_address_score(addr1, addr2)
+                scores = (first_score, last_score, address_score)
+            else:
+                scores = compute_individual_scores(row1, row2)
             accurate_score = get_combined_score(scores, match_type)
             
             if accurate_score > best_score:

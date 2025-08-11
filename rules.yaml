@@ -1,0 +1,35 @@
+# === RULES (STRICT) ===
+
+1) FAIL-FAST. NO FALLBACKS.
+- If any step cannot proceed as specified, RAISE and STOP immediately.
+- Disallowed: silent retries, automatic parameter changes, alternate algorithms, schema guesswork, imputations.
+- Exception (only): if the 'opens' column cannot be matched, write null/NA for 'opens', add a reason code (OPENS_NO_MATCH), and continue.
+- Every raised error must include: stage, file(s), column(s), and a minimal repro hint.
+
+2) TEST EVERY MILESTONE WITH REAL DATA.
+- Use ONLY the user’s real files; zero synthetic rows, headers, or values.
+- You may test on a slice of the real data, but the slice must be reproducible (e.g., fixed IDs or deterministic filters).
+- Each milestone must pass: (a) schema/typing checks, (b) determinism check (identical outputs on two runs), and (c) target acceptance gates for that stage.
+- If any gate fails → raise and stop (no auto “tuning” or fallbacks).
+
+3) ABSOLUTELY NO FAKE DATA.
+- Do not fabricate, mock, or “sample-generate” anything—tests, docs, examples, and screenshots must come from redacted real data only.
+- If required fields are missing or insufficient, PAUSE and request real data or approval to relax requirements—do not proceed with dummies.
+
+4) FOLLOW THE CHECKLIST (NO SKIPS).
+- Treat the existing checklist as the source of truth. Read it before any new task, commit, or run.
+- Do not advance past a step until every box in the current section is checked off using real data artifacts.
+- Produce an artifact map for each run (what files satisfy which checklist items). If any item isn’t satisfied, raise and stop.
+
+5) ASK BEFORE LARGE CODE CHANGES.
+- “Large change” includes ANY of the following:
+  - Data model/schema or I/O contract changes
+  - Matching algorithm/weights/threshold strategy changes
+  - Dependency additions/removals or engine swaps
+  - Output columns/filenames/layout changes
+  - Refactors >100 LOC in core modules or anything affecting determinism
+- Before executing: post a one-paragraph proposal with: intent, exact diff summary, risks, expected impact, and rollback plan. Proceed only after explicit approval.
+
+
+# SINGLE SPECIAL CASE (OPENS)
+- If no match is found for 'opens': set opens = null/NA, add reason code OPENS_NO_MATCH, do not raise. All other unmatched required fields must raise.
