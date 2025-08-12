@@ -95,12 +95,24 @@ def main() -> int:
             sheet_name = f"results_{mt}"
             df_out = df_res.copy()
 
-            # Append Opens as rightmost
+            # Append Opens as rightmost (compute before renaming columns)
             if 'Opens' in df2.columns:
                 opens_map = df2['Opens']
-                df_out['Opens'] = df_out['Sheet B Row'].apply(lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else "")
+                df_out['Opens'] = df_out['Sheet B Row'].apply(
+                    lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else ""
+                )
             else:
                 df_out['Opens'] = ""  # OPENS_NO_MATCH
+
+            # Rename A/B columns to Postal/Dealer after Opens is computed
+            df_out = df_out.rename(columns={
+                'Sheet A Row': 'Postal Row',
+                'Sheet B Row': 'Dealer Row',
+                'Name A': 'Postal Name',
+                'Name B': 'Dealer Name',
+                'Address A': 'Postal Address',
+                'Address B': 'Dealer Address',
+            })
 
             df_out.to_excel(writer, sheet_name=sheet_name, index=False)
             ws = writer.sheets[sheet_name]

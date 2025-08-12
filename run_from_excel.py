@@ -84,14 +84,27 @@ def main():
                 else:
                     wb.sheets.add(sheet_name)
                 
-                # Append Opens rightmost
+                # Append Opens rightmost (compute before renaming columns)
                 if 'Opens' in df2.columns:
                     results_df = results_df.copy()
                     opens_map = df2['Opens']
-                    results_df['Opens'] = results_df['Sheet B Row'].apply(lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else "")
+                    results_df['Opens'] = results_df['Sheet B Row'].apply(
+                        lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else ""
+                    )
                 else:
                     results_df = results_df.copy()
                     results_df['Opens'] = ""  # OPENS_NO_MATCH
+
+                # Rename A/B columns to Postal/Dealer after Opens is computed
+                rename_map = {
+                    'Sheet A Row': 'Postal Row',
+                    'Sheet B Row': 'Dealer Row',
+                    'Name A': 'Postal Name',
+                    'Name B': 'Dealer Name',
+                    'Address A': 'Postal Address',
+                    'Address B': 'Dealer Address',
+                }
+                results_df = results_df.rename(columns=rename_map)
 
                 wb.sheets[sheet_name].range('A1').options(index=False).value = results_df
                 wb.sheets[sheet_name].autofit()

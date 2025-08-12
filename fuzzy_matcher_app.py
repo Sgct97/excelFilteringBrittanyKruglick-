@@ -328,12 +328,24 @@ class FuzzyMatcherApp:
                                 # Convert to 0-based index for df2 alignment
                                 try:
                                     opens_map = df2['Opens']
-                                    results_df['Opens'] = results_df['Sheet B Row'].apply(lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else "")
+                                    results_df['Opens'] = results_df['Sheet B Row'].apply(
+                                        lambda r: opens_map.iloc[int(r) - 2] if 0 <= int(r) - 2 < len(opens_map) else ""
+                                    )
                                 except Exception:
                                     results_df['Opens'] = ""
                             else:
                                 results_df = results_df.copy()
                                 results_df['Opens'] = ""  # OPENS_NO_MATCH case
+
+                            # Rename A/B columns to Postal/Dealer after Opens is computed
+                            results_df = results_df.rename(columns={
+                                'Sheet A Row': 'Postal Row',
+                                'Sheet B Row': 'Dealer Row',
+                                'Name A': 'Postal Name',
+                                'Name B': 'Dealer Name',
+                                'Address A': 'Postal Address',
+                                'Address B': 'Dealer Address',
+                            })
                             results_df.to_excel(writer, sheet_name=sheet_name, index=False)
                             
                             # Auto-resize columns to show full data
