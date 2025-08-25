@@ -198,6 +198,60 @@ def preprocess_master_with_opens(df_master_raw: pd.DataFrame) -> Tuple[pd.DataFr
     df2["Opens"] = normalized.reindex(df2.index).fillna("")
     return df2, False
 
+
+def preprocess_master_variable_with_opens(df_master_raw: pd.DataFrame) -> Tuple[pd.DataFrame, bool]:
+    """Preprocess master sheet using the same schema detection as input.
+
+    This function preserves the existing normalization and Opens logic while allowing
+    flexible header synonyms on the master (Dealer) sheet. It only renames columns
+    based on detected headers and then delegates to ``preprocess_data``.
+
+    Returns (df_master_processed, opens_missing_flag).
+    """
+    # Detect opens column before other processing (same logic as preprocess_master_with_opens)
+    opens_col = _detect_opens_header(list(df_master_raw.columns))
+
+    # Detect schema and rename columns to canonical names expected by preprocess_data
+    mapping = detect_schema(list(df_master_raw.columns), file="master", sheet="master")
+    df_renamed = df_master_raw.copy()
+
+    # For canonical fields used by preprocess_data, rename their sources if present
+    for canonical in ["First_Name", "Last_Name", "Address1", "City", "State", "Zip"]:
+        if canonical in mapping and mapping[canonical].source:
+            src = mapping[canonical].source
+            if src != canonical and src in df_renamed.columns:
+                # Avoid clobbering an existing canonical column with different data
+                if canonical in df_renamed.columns and src != canonical:
+                    # If both are present, it's effectively ambiguous; mirror input behavior by raising
+                    raise SchemaError(str({
+                        "code": "SCHEMA_AMBIGUOUS_HEADER",
+                        "stage": "schema_detection",
+                        "file": "master",
+                        "sheet": "master",
+                        "columns": [canonical, src],
+                        "detail": f"Multiple columns map to canonical '{canonical}'",
+                        "repro": "Remove/rename duplicate-like headers so only one maps to the canonical field.",
+                    }))
+                df_renamed = df_renamed.rename(columns={src: canonical})
+
+    # Ensure required columns exist even if not present in master; fill with empty strings
+    for required in ["First_Name", "Last_Name", "Address1", "City", "State", "Zip"]:
+        if required not in df_renamed.columns:
+            df_renamed[required] = ""
+
+    # Delegate to existing strict preprocessing
+    df2 = preprocess_data(df_renamed)
+
+    # Attach Opens if present
+    if opens_col is None:
+        return df2, True
+
+    raw_series = df_master_raw[opens_col]
+    normalized = raw_series.astype(str).fillna("").str.strip().str.lower().apply(lambda v: "x" if v == "x" else "")
+    df2 = df2.copy()
+    df2["Opens"] = normalized.reindex(df2.index).fillna("")
+    return df2, False
+
 def compute_address_score(addr1: str, addr2: str) -> float:
     """Compute address similarity score that properly handles house numbers.
     
