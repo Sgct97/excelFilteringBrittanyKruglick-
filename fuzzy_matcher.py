@@ -48,12 +48,19 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
         else:
             raise KeyError(f"Missing required column: {col}")
 
-    # Create FullAddress
-    df_processed['FullAddress'] = (
-        df_processed['Address1'] + ', ' +
-        df_processed['City'] + ', ' +
-        df_processed['State'] + ' ' +
-        df_processed['Zip']
+    # Create FullAddress only when all core parts are present (Address1, City, State, Zip)
+    df_processed["FullAddress"] = ""
+    _core_ok = (
+        df_processed["Address1"].astype(str).str.strip().ne("") &
+        df_processed["City"].astype(str).str.strip().ne("") &
+        df_processed["State"].astype(str).str.strip().ne("") &
+        df_processed["Zip"].astype(str).str.strip().ne("")
+    )
+    df_processed.loc[_core_ok, 'FullAddress'] = (
+        df_processed.loc[_core_ok, 'Address1'] + ', ' +
+        df_processed.loc[_core_ok, 'City'] + ', ' +
+        df_processed.loc[_core_ok, 'State'] + ' ' +
+        df_processed.loc[_core_ok, 'Zip']
     ).str.strip(', ')
 
     # Drop extra columns like MD5, First_Name_CB, etc.
@@ -135,14 +142,22 @@ def preprocess_input_variable(df: pd.DataFrame, *, file: str, sheet: str) -> Tup
         else:
             addr_line = std["Address1"].astype(str).fillna("")
 
-        std["FullAddress"] = (
-            addr_line
+        # Build only when all four parts are present
+        core_ok = (
+            addr_line.astype(str).str.strip().ne("") &
+            std["City"].astype(str).str.strip().ne("") &
+            std["State"].astype(str).str.strip().ne("") &
+            std["Zip"].astype(str).str.strip().ne("")
+        )
+        std["FullAddress"] = ""
+        std.loc[core_ok, "FullAddress"] = (
+            addr_line[core_ok]
             + ", "
-            + std["City"].astype(str).fillna("")
+            + std["City"][core_ok].astype(str).fillna("")
             + ", "
-            + std["State"].astype(str).fillna("")
+            + std["State"][core_ok].astype(str).fillna("")
             + " "
-            + std["Zip"].astype(str).fillna("")
+            + std["Zip"][core_ok].astype(str).fillna("")
         ).str.replace(r"\s+", " ", regex=True).str.strip(", ")
 
     # Normalize to uppercase/trim to match existing matcher expectations
@@ -438,6 +453,9 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
     # Pre-compute search strings ONCE (not for every input row!)
     logging.info("Pre-computing search strings for master data...")
     df2_list = list(df2.iterrows())  # [(actual_idx, row), ...]
+    if match_type in ("FullAddress", "LastNameAddress"):
+        # Exclude master rows without a usable FullAddress
+        df2_list = [(actual_idx, row2) for actual_idx, row2 in df2_list if str(row2.get("FullAddress", "")).strip() != ""]
     search_strings = [create_search_string(row2, match_type) for actual_idx, row2 in df2_list]
     logging.info(f"Pre-computed {len(search_strings)} search strings.")
     
@@ -451,6 +469,9 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
         best_row2 = None
         
         # Use process.extract for initial filtering, then verify with our custom logic
+        # Skip input rows lacking required FullAddress when address-based
+        if match_type in ("FullAddress", "LastNameAddress") and str(row1.get("FullAddress", "")).strip() == "":
+            continue
         query_str = create_search_string(row1, match_type)
         
         # Get top candidates using process.extract (much faster than nested loop)
