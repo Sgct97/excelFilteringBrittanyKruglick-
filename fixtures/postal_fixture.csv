@@ -1,0 +1,14 @@
+First Name,Last Name,Address Line 1,Address Line 2,City,St,ZipCode,FullName
+John,Doe,123 MAIN ST,APT 5,TOWN,CT,06001,
+,,1 OAK RD,,TOWN,CT,06001,Jane Doe Jr
+Bob,Smith,50 OAK ROAD,,CITY,CT,06001,
+Jim,Beam,7 PINE ST,STE 12,CITY,CT,06001,
+Ann,Lee,10 Maple Ave,,City,CT,06001,
+José,Alvarez,12 Río Ave,,Ciudad,CT,06002,
+Patrick,O'Neil,22 King's Rd,,Hamlet,CT,06003,
+Mary,Smith-Johnson,44 Elm St,,Burg,CT,06004,
+Z,Y,1 A St,,CITY,CT,06001-1234,
+Q,R,9 X Rd,,CITY,CONNECTICUT,06001,
+A,B,101 Main St,,CITY,CT,06001,
+S,T,2 C St,,CITY,CT,06001,
+

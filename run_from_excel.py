@@ -5,7 +5,7 @@ from fuzzy_matcher import (
     preprocess_data,
     run_specific_match,
     preprocess_input_variable,
-    preprocess_master_with_opens,
+    preprocess_master_variable_with_opens,
     SchemaError,
 )
 
@@ -60,7 +60,7 @@ def main():
         except SchemaError as se:
             print(str(se))
             return
-        df2, opens_missing = preprocess_master_with_opens(master_raw)  # df2 = master (larger)
+        df2, opens_missing = preprocess_master_variable_with_opens(master_raw)  # df2 = master (larger)
 
         # --- Step 4: Choose enabled match types ---
         all_types = ['FullName', 'LastNameAddress', 'FullAddress']
@@ -95,14 +95,56 @@ def main():
                     results_df = results_df.copy()
                     results_df['Opens'] = ""  # OPENS_NO_MATCH
 
+                # Display-only fallback: if Address A/B blank, build from parts for visibility
+                try:
+                    def _zip_str(v):
+                        s = str(v or '').strip()
+                        return s[:-2] if s.endswith('.0') else s
+                    def _build_addr(df, idx):
+                        if idx < 0 or idx >= len(df):
+                            return ''
+                        a1 = str(df.iloc[idx].get('Address1', '') or '').strip()
+                        city = str(df.iloc[idx].get('City', '') or '').strip()
+                        state = str(df.iloc[idx].get('State', '') or '').strip()
+                        z = _zip_str(df.iloc[idx].get('Zip', ''))
+                        if not a1 and not city and not state and not z:
+                            return ''
+                        core = ', '.join([p for p in [a1, city, state] if p])
+                        return (core + (' ' + z if z else '')).strip()
+                    # Address A from input df1
+                    def _addr_a(row):
+                        val = str(row.get('Address A', '') or '').strip()
+                        if val:
+                            return val
+                        try:
+                            idx = int(row.get('Sheet A Row', 0)) - 2
+                        except Exception:
+                            idx = -1
+                        return _build_addr(df1, idx)
+                    # Address B from master df2
+                    def _addr_b(row):
+                        val = str(row.get('Address B', '') or '').strip()
+                        if val:
+                            return val
+                        try:
+                            idx = int(row.get('Sheet B Row', 0)) - 2
+                        except Exception:
+                            idx = -1
+                        return _build_addr(df2, idx)
+                    results_df = results_df.copy()
+                    results_df['Address A'] = results_df.apply(_addr_a, axis=1)
+                    results_df['Address B'] = results_df.apply(_addr_b, axis=1)
+                except Exception:
+                    pass
+
                 # Rename A/B columns to Postal/Dealer after Opens is computed
                 rename_map = {
-                    'Sheet A Row': 'Postal Row',
-                    'Sheet B Row': 'Dealer Row',
-                    'Name A': 'Postal Name',
-                    'Name B': 'Dealer Name',
-                    'Address A': 'Postal Address',
-                    'Address B': 'Dealer Address',
+                    'Sheet A Row': 'Dealer Row',
+                    'Sheet B Row': 'Postal Row',
+                    'Name A': 'Dealer Name',
+                    'Name B': 'Postal Name',
+                    'Address A': 'Dealer Address',
+                    'Address B': 'Postal Address',
                 }
                 results_df = results_df.rename(columns=rename_map)
 

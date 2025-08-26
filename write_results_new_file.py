@@ -11,7 +11,7 @@ import pandas as pd
 
 from fuzzy_matcher import (
     preprocess_input_variable,
-    preprocess_master_with_opens,
+    preprocess_master_variable_with_opens,
     run_specific_match,
     SchemaError,
 )
@@ -55,7 +55,7 @@ def main() -> int:
         print(str(se))
         return 2
 
-    df2, opens_missing = preprocess_master_with_opens(master_df)
+    df2, opens_missing = preprocess_master_variable_with_opens(master_df)
 
     # Run matches
     all_types = ['FullName', 'LastNameAddress', 'FullAddress']
@@ -104,14 +104,54 @@ def main() -> int:
             else:
                 df_out['Opens'] = ""  # OPENS_NO_MATCH
 
-            # Rename A/B columns to Postal/Dealer after Opens is computed
+            # Display-only fallback: if Address A/B blank, build from parts for visibility
+            try:
+                def _zip_str(v):
+                    s = str(v or '').strip()
+                    return s[:-2] if s.endswith('.0') else s
+                def _build_addr(df, idx):
+                    if idx < 0 or idx >= len(df):
+                        return ''
+                    a1 = str(df.iloc[idx].get('Address1', '') or '').strip()
+                    city = str(df.iloc[idx].get('City', '') or '').strip()
+                    state = str(df.iloc[idx].get('State', '') or '').strip()
+                    z = _zip_str(df.iloc[idx].get('Zip', ''))
+                    if not a1 and not city and not state and not z:
+                        return ''
+                    core = ', '.join([p for p in [a1, city, state] if p])
+                    return (core + (' ' + z if z else '')).strip()
+                def _addr_a(row):
+                    val = str(row.get('Address A', '') or '').strip()
+                    if val:
+                        return val
+                    try:
+                        idx = int(row.get('Sheet A Row', 0)) - 2
+                    except Exception:
+                        idx = -1
+                    return _build_addr(df1, idx)
+                def _addr_b(row):
+                    val = str(row.get('Address B', '') or '').strip()
+                    if val:
+                        return val
+                    try:
+                        idx = int(row.get('Sheet B Row', 0)) - 2
+                    except Exception:
+                        idx = -1
+                    return _build_addr(df2, idx)
+                df_out = df_out.copy()
+                df_out['Address A'] = df_out.apply(_addr_a, axis=1)
+                df_out['Address B'] = df_out.apply(_addr_b, axis=1)
+            except Exception:
+                pass
+
+            # Rename A/B columns to Dealer/Postal after Opens is computed
             df_out = df_out.rename(columns={
-                'Sheet A Row': 'Postal Row',
-                'Sheet B Row': 'Dealer Row',
-                'Name A': 'Postal Name',
-                'Name B': 'Dealer Name',
-                'Address A': 'Postal Address',
-                'Address B': 'Dealer Address',
+                'Sheet A Row': 'Dealer Row',
+                'Sheet B Row': 'Postal Row',
+                'Name A': 'Dealer Name',
+                'Name B': 'Postal Name',
+                'Address A': 'Dealer Address',
+                'Address B': 'Postal Address',
             })
 
             df_out.to_excel(writer, sheet_name=sheet_name, index=False)

@@ -420,8 +420,16 @@ def create_search_string(row: pd.Series, match_type: str) -> str:
     if match_type == 'FullName':
         return f"{row['First_Name']} {row['Last_Name']}".strip()
     elif match_type == 'LastNameAddress':
-        # Strip property designators from address portion when constructing search string for candidate filtering
-        return f"{row['Last_Name']} {_strip_property_designators(row['FullAddress'])}".strip()
+        # Prefer FullAddress with designators stripped; if missing, fall back to City+State+Zip (input side)
+        fulladdr = str(row.get('FullAddress', '')).strip()
+        if fulladdr:
+            return f"{row['Last_Name']} {_strip_property_designators(fulladdr)}".strip()
+        # Fallback: construct from City/State/Zip if available
+        city = str(row.get('City', '')).strip()
+        state = str(row.get('State', '')).strip()
+        z = str(row.get('Zip', '')).strip()
+        fallback = " ".join([p for p in [city, state, z] if p])
+        return f"{row['Last_Name']} {fallback}".strip()
     elif match_type == 'FullAddress':
         return row['FullAddress']
     raise ValueError(f"Unknown match_type: {match_type}")
@@ -454,7 +462,7 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
     logging.info("Pre-computing search strings for master data...")
     df2_list = list(df2.iterrows())  # [(actual_idx, row), ...]
     if match_type in ("FullAddress", "LastNameAddress"):
-        # Exclude master rows without a usable FullAddress
+        # Exclude master rows without a usable FullAddress (master must always have full address)
         df2_list = [(actual_idx, row2) for actual_idx, row2 in df2_list if str(row2.get("FullAddress", "")).strip() != ""]
     search_strings = [create_search_string(row2, match_type) for actual_idx, row2 in df2_list]
     logging.info(f"Pre-computed {len(search_strings)} search strings.")
@@ -470,7 +478,7 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
         
         # Use process.extract for initial filtering, then verify with our custom logic
         # Skip input rows lacking required FullAddress when address-based
-        if match_type in ("FullAddress", "LastNameAddress") and str(row1.get("FullAddress", "")).strip() == "":
+        if match_type == "FullAddress" and str(row1.get("FullAddress", "")).strip() == "":
             continue
         query_str = create_search_string(row1, match_type)
         
@@ -493,7 +501,16 @@ def run_specific_match(df1: pd.DataFrame, df2: pd.DataFrame, match_type: str, th
             # Use our sophisticated scoring logic
             if match_type == 'LastNameAddress':
                 # Recompute address score with designators removed for this strategy
-                addr1 = _strip_property_designators(row1['FullAddress'])
+                # Input-side fallback: if FullAddress is blank, use City+State+Zip
+                fa1 = str(row1.get('FullAddress', '')).strip()
+                if not fa1:
+                    city = str(row1.get('City', '')).strip()
+                    state = str(row1.get('State', '')).strip()
+                    z = str(row1.get('Zip', '')).strip()
+                    fa1 = ", ".join([p for p in [city, state] if p])
+                    if z:
+                        fa1 = (fa1 + ' ' + z).strip()
+                addr1 = _strip_property_designators(fa1)
                 addr2 = _strip_property_designators(row2['FullAddress'])
                 first_score = fuzz.token_set_ratio(row1['First_Name'], row2['First_Name'])
                 last_score = fuzz.token_set_ratio(row1['Last_Name'], row2['Last_Name'])
